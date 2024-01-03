@@ -11,10 +11,10 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
-public class DatabaseHandler {
+public class DatabaseHandlerj{
     private Connection connection;
 
-    public DatabaseHandler(String url, String user, String password) {
+    public DatabaseHandlerj(String url, String user, String password) {
         try {
             this.connection = DriverManager.getConnection(url, user, password);
         } catch (SQLException e) {
@@ -72,29 +72,28 @@ public class DatabaseHandler {
 
     public List<Meal> fetchMealsForDay(int userId, Date date) {
         List<Meal> meals = new ArrayList<>();
-        String sql = "SELECT * FROM meals WHERE user_id = ? AND date = ?";
+        String sql = "SELECT m.meal_id, m.meal_type, m.date, f.name, f.calories " +
+                "FROM meals m INNER JOIN food f ON m.food_id = f.food_id " +
+                "WHERE m.user_id = ? AND m.date = ?";
 
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-
             stmt.setInt(1, userId);
             stmt.setDate(2, date);
-
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
                     int mealId = rs.getInt("meal_id");
                     String mealType = rs.getString("meal_type");
                     Date mealDate = rs.getDate("date");
-                    int foodId = rs.getInt("food_id");
+                    String foodName = rs.getString("name");
+                    int calories = rs.getInt("calories");
 
-                    Meal meal = new Meal(mealId, userId, mealType, mealDate, foodId);
+                    Meal meal = new Meal(mealId, mealType, mealDate.toString(), foodName, calories);
                     meals.add(meal);
                 }
             }
         } catch (SQLException e) {
             e.printStackTrace();
-
         }
-
         return meals;
     }
 
