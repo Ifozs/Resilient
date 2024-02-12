@@ -6,4 +6,6 @@ data class FoodItemRecord( val foodId: Int,
                            val calories: Int,
                            val carbs: Int,
                            val protein: Int,
-                           val fat: Int)
+                           val fat: Int,
+                           val servingSize: Float)
+

@@ -1,5 +1,4 @@
 import org.jetbrains.compose.ExperimentalComposeLibrary
-import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -32,6 +31,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.compose.ui.tooling.preview)
             implementation(libs.androidx.activity.compose)
+            implementation("com.himanshoe:charty:2.0.0-alpha01")
         }
         commonMain.dependencies {
             implementation(compose.runtime)
@@ -54,7 +54,8 @@ android {
 
     defaultConfig {
         applicationId = "tech.resilientgym.resilient"
-        minSdk = libs.versions.android.minSdk.get().toInt()
+        //minSdk = libs.versions.android.minSdk.get().toInt()
+        minSdkVersion(26)
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
         versionName = "1.0"
@@ -76,8 +77,14 @@ android {
     dependencies {
         debugImplementation(libs.compose.ui.tooling)
         implementation("org.postgresql:postgresql:42.2.5")
-        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.0'")
+        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.0")
         implementation("org.mindrot:jbcrypt:0.4")
+        implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+        implementation("com.himanshoe:charty:2.0.0-alpha01")
     }
+}
+dependencies {
+    implementation(libs.androidx.camera.lifecycle)
+    implementation("com.himanshoe:charty:2.0.0-alpha01")
 }
 
