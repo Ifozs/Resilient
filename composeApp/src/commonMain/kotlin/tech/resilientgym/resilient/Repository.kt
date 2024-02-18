@@ -4,6 +4,7 @@ import DatabaseHandler
 
 class Repository(private val databaseHandler: DatabaseHandler) {
 
+    // Abstraction Layer
     suspend fun fetchMealsForDay(userId: Int, date: String): List<Meal> {
         return  databaseHandler.fetchMealsForDay(userId, date)
     }
@@ -56,11 +57,27 @@ class Repository(private val databaseHandler: DatabaseHandler) {
         databaseHandler.updateUserSettings(settings)
     }
 
-    suspend fun authenticateUser(email: String, password: String): Int?{
+    suspend fun authenticateUser(email: String, password: String): Pair<Int, String>?{
         return databaseHandler.authenticateUser(email, password)
     }
 
     suspend fun getAllUserExerciseProgress(userId: Int): Map<String, List<Pair<String, Double>>>{
         return databaseHandler.getAllUserExerciseProgress(userId);
+    }
+
+    suspend fun insertFood(barcode: String?, name: String, calories: Int, carbs: Int?, protein: Int?, fat: Int?, defaultServingSize: Float){
+        databaseHandler.insertFood(barcode, name, calories,carbs , protein,fat , defaultServingSize)
+    }
+
+    suspend fun insertExercise(exercise: String){
+        databaseHandler.insertExercise(exercise)
+    }
+
+    suspend fun insertMuscleGroup(muscleGroupName: String){
+        databaseHandler.insertMuscleGroup(muscleGroupName)
+    }
+
+    suspend fun insertExerciseMuscleGroup(exerciseName: String, muscleGroupName: String){
+        databaseHandler.insertExerciseMuscleGroup(exerciseName, muscleGroupName)
     }
 }

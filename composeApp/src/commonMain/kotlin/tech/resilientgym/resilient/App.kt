@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -98,18 +99,19 @@ enum class ScreenType {
     StartRoutine,
     Registration,
     UserInfo,
-    Settings
+    Settings,
+    AdminDashboard
     //screens
 }
 
 @OptIn(ExperimentalResourceApi::class)
 @Composable
-fun App(userSessionManager: UserSessionManager, barcodeScanner: BarcodeScanner) {
+fun App(userSessionManager: UserSessionManager, barcodeScanner: BarcodeScanner, barcodeResult: String) {
     //probably the worst way to control screens, but cant use view models because of IOS implementation
 
     val platformDate = PlatformDate()
     MaterialTheme {
-        var selectedScreen by remember { mutableStateOf(ScreenType.Login) } // Start with Login screen
+        var selectedScreen by remember { mutableStateOf(ScreenType.Dashboard) }
         var isLoggedIn by remember { mutableStateOf(userSessionManager.isLoggedIn()) }
         var selectedExercises by remember { mutableStateOf<List<Exercise>>(emptyList()) }
         val createRoutine by remember { mutableStateOf<List<SessionExercise>>(emptyList()) }
@@ -117,6 +119,10 @@ fun App(userSessionManager: UserSessionManager, barcodeScanner: BarcodeScanner) 
         var selectedWorkoutSession by remember { mutableStateOf<WorkoutSession?>(null) }
         var selectedDatesss by remember { mutableStateOf(platformDate.todayAsString()) }
 
+        val handleNavigate: (ScreenType) -> Unit = { screen ->
+            selectedScreen = screen
+            isLoggedIn = true // Assuming login was successful if this callback is invoked
+        }
 
         Scaffold(
             topBar = {
@@ -127,27 +133,34 @@ fun App(userSessionManager: UserSessionManager, barcodeScanner: BarcodeScanner) 
                             Box(modifier = Modifier.fillMaxWidth()) {
                                 Text(text = "Resilient", style = MaterialTheme.typography.h6, modifier = Modifier.align(Alignment.Center))
                             }
-                        } else {
-                            // Default alignment when logged in (settings icon visible)
+                        } else if (isLoggedIn && selectedScreen != ScreenType.AdminDashboard && selectedScreen != ScreenType.Registration) {
+                            // Center the title when not logged in
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                Text(text = "Resilient", style = MaterialTheme.typography.h6, modifier = Modifier.align(Alignment.Center))
+                            }
+                        }else{
+                            // Default alignment when logged in
                             Text(text = "Resilient", style = MaterialTheme.typography.h6)
                         }
                     },
-                    navigationIcon = if (isLoggedIn) {
+                    navigationIcon = if (isLoggedIn && selectedScreen != ScreenType.AdminDashboard && selectedScreen != ScreenType.Registration) {
                         {
+                            //settings icon
                             IconButton(onClick = { selectedScreen = ScreenType.Settings }) {
                                 Icon(Icons.Default.Settings, contentDescription = "Settings")
                             }
                         }
                     } else null,
                     actions = {
-                        if (isLoggedIn) {
+                        if (isLoggedIn && selectedScreen != ScreenType.AdminDashboard && selectedScreen != ScreenType.Registration) {
                             // Display the formatted date string
                             Text(
                                 text = platformDate.formatDateString(selectedDatesss),
                                 style = MaterialTheme.typography.subtitle1,
-                                modifier = Modifier.padding(end = 8.dp)
+                                // Adjust the minWidth to suit the longest possible date string you expect
+                                modifier = Modifier.padding(end = 5.dp).widthIn(min = 85.dp) // Example minWidth
                             )
-                            // Inside your TopAppBar composable
+                            // Previous Day Button
                             IconButton(onClick = {
                                 selectedDatesss = platformDate.previousDayAsString(selectedDatesss)
                             }) {
@@ -165,32 +178,30 @@ fun App(userSessionManager: UserSessionManager, barcodeScanner: BarcodeScanner) 
                 )
             },
             bottomBar = {
-                if (isLoggedIn) {
+                if (isLoggedIn && selectedScreen != ScreenType.AdminDashboard && selectedScreen != ScreenType.Registration) {
+                    //navigation menu at bottom
                     AppBottomNavigation(selectedScreen) { screen ->
-
                             selectedScreen = screen
-
                     }
                 }
             }
         ) {
             if (!isLoggedIn) {
+                //if not logged in
+                selectedScreen = ScreenType.Login
                 when (selectedScreen) {
 
                     ScreenType.Login -> LoginScreen(
-                        userSessionManager,
-                        onLoginSuccess = {
-                            isLoggedIn = true
-                            selectedScreen = ScreenType.Dashboard
-                        },
-                        onNavigateToRegister = { selectedScreen = ScreenType.Registration }
+                        userSessionManager = userSessionManager,
+                        onNavigate = handleNavigate, // Pass the navigation handler
+                        onNavigateToRegister = {isLoggedIn = true
+                            selectedScreen = ScreenType.Registration}
                     )
 
                     ScreenType.Registration -> RegistrationScreen(onRegistrationSuccess = { userId ->
                         userSessionManager.createSession(userId)
                         selectedScreen = ScreenType.UserInfo
                     })
-
 
                     ScreenType.UserInfo -> UserInfoScreen(userSessionManager,
                         onSaveUserInfo = {
@@ -205,6 +216,19 @@ fun App(userSessionManager: UserSessionManager, barcodeScanner: BarcodeScanner) 
             } else {
 
                 when (selectedScreen) {
+                    ScreenType.Registration -> RegistrationScreen(onRegistrationSuccess = { userId ->
+                        userSessionManager.createSession(userId)
+                        selectedScreen = ScreenType.UserInfo
+                    })
+
+                    ScreenType.UserInfo -> UserInfoScreen(userSessionManager,
+                        onSaveUserInfo = {
+                            // After saving user info, set isLoggedIn to true and navigate to Dashboard
+                            selectedScreen = ScreenType.Dashboard
+                        }
+                    )
+
+                    ScreenType.AdminDashboard -> AdminDashboardScreen()
                     ScreenType.Settings -> SettingsScreen(userSessionManager)
                     ScreenType.Dashboard -> HomeScreen(userSessionManager, selectedDatesss, unitforScreen = {ScreenType.Dashboard})
                     ScreenType.Food -> FoodsScreen(
@@ -214,12 +238,12 @@ fun App(userSessionManager: UserSessionManager, barcodeScanner: BarcodeScanner) 
                         },
                         selectedDatesss
                     )
-                    ScreenType.AddFood -> AddFoodScreen(barcodeScanner){ selectedFoodItem ->
+                    ScreenType.AddFood -> AddFoodScreen(barcodeScanner, barcodeResult){ selectedFoodItem ->
                         selectedFood = selectedFoodItem
                         selectedScreen = ScreenType.AddSelectedFoodScreen
                     }
                     ScreenType.AddSelectedFoodScreen -> AddSelectedFoodScreen(
-                        selectedFood = selectedFood, // Make sure this is the selected food item to add to the meal.
+                        selectedFood = selectedFood,
                         onSave = { meal, foodId ->
                             val dbHandler = DatabaseHandler()
                             val repository = Repository(dbHandler)
@@ -231,7 +255,7 @@ fun App(userSessionManager: UserSessionManager, barcodeScanner: BarcodeScanner) 
                                         meal,
                                         userid,
                                         foodId
-                                    ) // Pass the Meal object and foodId to the insert function.
+                                    )
                                 }
                             }
                             selectedScreen = ScreenType.Food
@@ -247,18 +271,19 @@ fun App(userSessionManager: UserSessionManager, barcodeScanner: BarcodeScanner) 
                         onSessionClick = {
                                 session ->
                             selectedWorkoutSession = session // Save the selected session
-                            selectedScreen = ScreenType.StartRoutine // Change the screen
+                            selectedScreen = ScreenType.StartRoutine
                         }
                     )
                     ScreenType.StartRoutine -> {
-                        // Define what should happen when the workout session is finished
+
                         val onFinishSession: (WorkoutSession, Map<String, Double>) -> Unit = { session, updatedWeights ->
+                            //when a workout is finished ->
                             val exerciseWeightUpdates = updatedWeights.map { (exerciseId, maxWeight) ->
                                 ExerciseWeightUpdate(exerciseId, maxWeight)
                             }
 
                             val dbHandler = DatabaseHandler()
-                            // Call insertWorkoutProgress with the necessary parameters
+                            // Call insertWorkoutProgress
                             CoroutineScope(Dispatchers.Default).launch {
                                 Repository(dbHandler).insertWorkoutProgress(session.userId, session.sessionId, exerciseWeightUpdates)
                                 //Repository(dbHandler).insertWorkoutProgress(session.userId, session.sessionId, exerciseWeightUpdates)
@@ -278,14 +303,13 @@ fun App(userSessionManager: UserSessionManager, barcodeScanner: BarcodeScanner) 
                         onCancel = {
                             // Define what should happen when cancel is clicked
                             selectedExercises = emptyList()
-                            selectedScreen = ScreenType.WorkoutSessions // Go back to the previous screen, for example
+                            selectedScreen = ScreenType.WorkoutSessions
                         },
                         onSave = {
-                            // Define what should happen when save is clicked
 
                             val dbHandler = DatabaseHandler()
 
-                            CoroutineScope(Dispatchers.Default).launch { // Using Dispatchers.Default for background work
+                            CoroutineScope(Dispatchers.Default).launch {
                                 Repository(dbHandler).insertSessionForUser(userId = userSessionManager.userId!!, workoutSession = it)
                             }
 
@@ -296,17 +320,15 @@ fun App(userSessionManager: UserSessionManager, barcodeScanner: BarcodeScanner) 
                         },
                         selectedExercises = selectedExercises,
                         createRoutine = createRoutine.toMutableList(),
-                        selectedDatesss
+                        selectedDatesss,
+                        userId = userSessionManager
                     )
                     ScreenType.ExerciseSelectionScreen -> AddExerciseScreen(
                         onCancel = {
-                            // Define what should happen when the cancel action is triggered
-                            // For example, navigate back to the previous screen
-                            selectedScreen = ScreenType.RoutineCreation // Replace with actual screen type
+                            selectedScreen = ScreenType.RoutineCreation
                         },
                         onCreate = {
-                            // Define what should happen when the create action is triggered
-                            // For example, create a new exercise or navigate to the creation screen
+                            //TODO: create a new exercise or navigate to the creation screen
                         },
                         onSelectExercise = { exercise ->
                             selectedExercises = selectedExercises + exercise
@@ -322,7 +344,123 @@ fun App(userSessionManager: UserSessionManager, barcodeScanner: BarcodeScanner) 
 }
 
 @Composable
+fun AdminDashboardScreen() {
+    var foodName by remember { mutableStateOf("") }
+    var calories by remember { mutableStateOf("") }
+    var carbs by remember { mutableStateOf("") }
+    var protein by remember { mutableStateOf("") }
+    var fat by remember { mutableStateOf("") }
+    var exerciseName by remember { mutableStateOf("") }
+    var muscleGroupName by remember { mutableStateOf("") }
+    var exerciseToMuscle by remember { mutableStateOf("") }
+    var associatedMuscleGroupName by remember { mutableStateOf("") }
+
+    val dbHandler = DatabaseHandler()
+    val repository = Repository(dbHandler)
+
+    LazyColumn(modifier = Modifier.padding(16.dp)) {
+        item {
+            Text("Admin Dashboard", style = MaterialTheme.typography.h5)
+        }
+
+        item {
+            // Add Food Section
+            Text("Add Food", style = MaterialTheme.typography.h6)
+            InputField(value = foodName, onValueChange = { foodName = it }, label = "Food Name")
+            InputField(value = calories, onValueChange = { calories = it }, label = "Calories")
+            InputField(value = carbs, onValueChange = { carbs = it }, label = "Carbs (g)")
+            InputField(value = protein, onValueChange = { protein = it }, label = "Protein (g)")
+            InputField(value = fat, onValueChange = { fat = it }, label = "Fat (g)")
+            Button(onClick = {
+                CoroutineScope(Dispatchers.Default).launch {
+                    repository.insertFood(
+                        null,
+                        foodName,
+                        calories.toInt(),
+                        carbs.toIntOrNull(),
+                        protein.toIntOrNull(),
+                        fat.toIntOrNull(),
+                        100f // Assuming default serving size is 100g for simplicity
+                    )
+                    // Reset fields after insertion
+                    foodName = ""
+                    calories = ""
+                    carbs = ""
+                    protein = ""
+                    fat = ""
+                }
+            }) {
+                Text("Add Food")
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(20.dp)) }
+
+        item {
+            // Add Exercise Section
+            Text("Add Exercise", style = MaterialTheme.typography.h6)
+            InputField(value = exerciseName, onValueChange = { exerciseName = it }, label = "Exercise Name")
+            Button(onClick = {
+                CoroutineScope(Dispatchers.Default).launch {
+                    repository.insertExercise(exerciseName)
+                    exerciseName = "" // Reset field after insertion
+                }
+            }) {
+                Text("Add Exercise")
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(20.dp)) }
+
+        item {
+            // Add Muscle Group Section
+            Text("Add Muscle Group", style = MaterialTheme.typography.h6)
+            InputField(value = muscleGroupName, onValueChange = { muscleGroupName = it }, label = "Muscle Group Name")
+            Button(onClick = {
+                CoroutineScope(Dispatchers.Default).launch {
+                    repository.insertMuscleGroup(muscleGroupName)
+                    muscleGroupName = "" // Reset field after insertion
+                }
+            }) {
+                Text("Add Muscle Group")
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(20.dp)) }
+
+        item {
+            // Associate Exercise with Muscle Group Section
+            Text("Associate Exercise with Muscle Group", style = MaterialTheme.typography.h6)
+            InputField(value = exerciseToMuscle, onValueChange = { exerciseToMuscle = it }, label = "Exercise Name")
+            InputField(value = associatedMuscleGroupName, onValueChange = { associatedMuscleGroupName = it }, label = "Muscle Group Name")
+            Button(onClick = {
+                CoroutineScope(Dispatchers.Default).launch {
+                    repository.insertExerciseMuscleGroup(exerciseToMuscle, associatedMuscleGroupName)
+                    exerciseToMuscle = "" // Reset field after insertion
+                    associatedMuscleGroupName = ""
+                }
+            }) {
+                Text("Associate Exercise")
+            }
+        }
+    }
+}
+
+
+@Composable
+fun InputField(value: String, onValueChange: (String) -> Unit, label: String) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        modifier = Modifier.fillMaxWidth()
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+}
+
+@Composable
 fun SettingsScreen(userSessionManager: UserSessionManager) {
+    //Settings
     val dbHandler = remember { DatabaseHandler() }
     val repository = remember { Repository(dbHandler) }
     var userSettings by remember { mutableStateOf<UserSettings?>(null) }
@@ -337,12 +475,11 @@ fun SettingsScreen(userSessionManager: UserSessionManager) {
     if (isLoading) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.fillMaxSize() // Fills the parent to center the progress indicator
+            modifier = Modifier.fillMaxSize() //center the progress indicator
         ) {
             CircularProgressIndicator()
         }
     } else {
-        // Now that you have the user settings, create the UI for them
         userSettings?.let { settings ->
             SettingsForm(settings = settings, onUpdateSettings = { updatedSettings -> CoroutineScope(Dispatchers.Default).launch {Repository(dbHandler).updateUserSettings(updatedSettings)}})
         } ?: run {
@@ -360,27 +497,23 @@ fun SettingsForm(settings: UserSettings, onUpdateSettings: (UserSettings) -> Uni
     var age by remember { mutableStateOf(settings.age?.toString() ?: "") }
     var bodyFat by remember { mutableStateOf(settings.bodyfat?.toString() ?: "") }
     var height by remember { mutableStateOf(settings.height?.toString() ?: "") }
-    var gender by remember { mutableStateOf(settings.gender ?: "Not Specified") }
-    val genders = listOf("Male", "Female", "Other", "Not Specified")
-    var expanded by remember { mutableStateOf(false) }
+    var gender by remember { mutableStateOf(settings.gender ?: "") }
+    val genders = listOf("Male", "Female")
     var fitnessGoal by remember { mutableStateOf(settings.fitnessGoal ?: "Maintain") }
     val fitnessGoals = listOf("Bulk", "Cut", "Maintain")
-    var fitnessExpanded by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
-            // Additional padding at the bottom to account for the navigation bar
-            .padding(bottom = 68.dp), // Adjust this value based on the height of your nav bar
+            .padding(bottom = 68.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Top
     ) {
         Text("Settings", style = MaterialTheme.typography.h5)
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Enhanced UI with grouped fields and improved aesthetics
         GroupedTextField(label = "Personal Information", icon = Icons.Default.Person) {
             OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") })
             OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text("Email") })
@@ -420,7 +553,7 @@ fun GenderDropdown(selectedGender: String, genders: List<String>, onGenderSelect
             trailingIcon = {
                 Icon(Icons.Filled.ArrowDropDown, "Dropdown", Modifier.clickable { expanded = true })
             },
-            readOnly = true // Makes the text field not editable, turning it into a dropdown
+            readOnly = true
         )
         DropdownMenu(
             expanded = expanded,
@@ -510,6 +643,7 @@ fun UserInfoScreen(userSessionManager: UserSessionManager, onSaveUserInfo: () ->
     var showDropdownMenu by remember { mutableStateOf(false) }
     val genderOptions = listOf("male", "female")
 
+
     //Save func
     fun handleSave() {
         val dbHandler = DatabaseHandler()
@@ -522,10 +656,29 @@ fun UserInfoScreen(userSessionManager: UserSessionManager, onSaveUserInfo: () ->
         val bodyFatFloat = bodyFat.toFloatOrNull() ?: return
         val heightFloat = height.toFloatOrNull() ?: return
 
+        if (weightFloat <= 0f || weight.toString().count { it == '.' } > 1 || weight.split(".")[0].length > 3) {
+            // Show error message or return
+            return
+        }
+
+        if (ageInt <= 0) {
+            // Show error message or return
+            return
+        }
+
+        if (bodyFatFloat <= 0f || bodyFat.toString().count { it == '.' } > 1 || bodyFat.split(".")[0].length > 3) {
+            // Show error message or return
+            return
+        }
+
+        if (heightFloat <= 0f || height.toString().count { it == '.' } > 1 || height.split(".")[0].length > 3) {
+            // Show error message or return
+            return
+        }
+
         //fuck main thread
         CoroutineScope(Dispatchers.Default).launch {
             repository.insertUserInfo(userId, weightFloat, ageInt, bodyFatFloat, heightFloat, selectedGender)
-            //cant give wrong input if they do .... we're fucked
         }
         onSaveUserInfo()
     }
@@ -605,6 +758,11 @@ fun UserInfoScreen(userSessionManager: UserSessionManager, onSaveUserInfo: () ->
     }
 }
 
+fun isValidEmail(email: String): Boolean {
+    val emailRegex = "^[a-zA-Z0-9_+&*-]+(?:\\.[a-zA-Z0-9_+&*-]+)*@(?:[a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,7}$"
+    return email.matches(emailRegex.toRegex())
+}
+
 @Composable
 fun RegistrationScreen(
     onRegistrationSuccess: (Int) -> Unit,
@@ -674,21 +832,51 @@ fun RegistrationScreen(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
         )
 
+
+        // Validation Functions
+
+        fun isValidPassword(password: String): Boolean {
+
+            return password.length >= 8
+        }
+
+        fun isFormValid(): Boolean {
+            when {
+                username.isBlank() -> {
+                    registrationErrorMessage = "Username cannot be empty"
+                    return false
+                }
+                !isValidEmail(email) -> {
+                    registrationErrorMessage = "Invalid email format"
+                    return false
+                }
+                !isValidPassword(password) -> {
+                    registrationErrorMessage = "Password does not meet criteria"
+                    return false
+                }
+                password != confirmPassword -> {
+                    registrationErrorMessage = "Passwords do not match"
+                    return false
+                }
+                else -> {
+                    registrationErrorMessage = null
+                    return true
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
 
         Button(
             onClick = {
-                if (username.isNotBlank() && email.isNotBlank() && password.isNotBlank() && confirmPassword == password) {
+                if (isFormValid()) {
                     val dbHandler = DatabaseHandler()
 
-                    // Using CoroutineScope to handle asynchronous operations
-                    CoroutineScope(Dispatchers.Main).launch { // Use Main dispatcher for UI updates
+                    CoroutineScope(Dispatchers.Main).launch {
                         val userId = withContext(Dispatchers.Default) {
-                            // Execute the registration in the IO context and wait for the result
                             Repository(dbHandler).registerUser(username, email, password)
                         }
 
-                        // Call onRegistrationSuccess after getting the user ID
                         if (userId > 0) {
                             onRegistrationSuccess(userId)
                         } else {
@@ -705,10 +893,6 @@ fun RegistrationScreen(
     }
 }
 
-private fun validateRegistration(username: String, email: String, password: String, confirmPassword: String): Boolean {
-    return username.isNotBlank() && email.isNotBlank() && password.isNotBlank() && password == confirmPassword
-}
-
 @Composable
 fun StartRoutineScreen(
     selectedWorkoutSession: WorkoutSession?,
@@ -718,11 +902,10 @@ fun StartRoutineScreen(
     val coroutineScope = rememberCoroutineScope()
     val updatedWeights = remember { mutableStateMapOf<String, Double>() }
 
-    // Start the timer when the composable is first launched
     LaunchedEffect(key1 = "timer") {
         coroutineScope.launch {
             while (true) {
-                delay(1000) // Wait for 1 second
+                delay(1000) // 1 sec
                 elapsedTime += 1
             }
         }
@@ -825,6 +1008,7 @@ fun ExerciseItem(
     exercise: SessionExercise,
     updatedWeights: SnapshotStateMap<String, Double>
 ) {
+    //show exercise
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -866,8 +1050,6 @@ fun ExerciseItem(
     }
 }
 
-
-
 @Composable
 fun AddExerciseScreen(onCancel: () -> Unit, onCreate: () -> Unit, onSelectExercise: (Exercise) -> Unit) {
     Scaffold(
@@ -888,15 +1070,15 @@ fun AddExerciseScreen(onCancel: () -> Unit, onCreate: () -> Unit, onSelectExerci
         }
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            SearchBar() // You'll define this Composable for the search functionality
-            FilterButtons() // This is for the "All Equipment" and "All Muscles" toggle buttons
-            ExerciseList(onSelectExercise) // Pass a list of exercises and a function to handle selection
+            //TODO: SearchBar()
+            ExerciseList(onSelectExercise)
         }
     }
 }
 
 @Composable
 fun ExerciseList(onSelectExercise: (Exercise) -> Unit) {
+    //shows exercises
 
     // Define the state for meals
     var exercises by remember { mutableStateOf<List<Exercise>>(listOf()) }
@@ -913,7 +1095,6 @@ fun ExerciseList(onSelectExercise: (Exercise) -> Unit) {
             ExerciseItem(exercise, onSelectExercise)
         }
     }
-
 }
 
 @Composable
@@ -934,7 +1115,6 @@ fun ExerciseItem(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Assuming you have an image resource id or URL for each exercise
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = exercise.name, fontWeight = FontWeight.ExtraBold)
@@ -964,44 +1144,31 @@ fun SearchBar() {
 }
 
 @Composable
-fun FilterButtons() {
-    // Use a Row to align buttons horizontally, or LazyRow if you have more filters
-    Row(modifier = Modifier.padding(8.dp)) {
-        Button(onClick = { /* Handle All Equipment filter */ }) {
-            Text("All Equipment")
-        }
-        Spacer(modifier = Modifier.width(8.dp)) // Add space between buttons
-        Button(onClick = { /* Handle All Muscles filter */ }) {
-            Text("All Muscles")
-        }
-    }
-}
-
-@Composable
 fun RoutineCreationScreen(
     onCancel: () -> Unit,
     onSave: (WorkoutSession) -> Unit,
     onAddExercise: () -> Unit,
     selectedExercises: List<Exercise>,
     createRoutine: MutableList<SessionExercise>,
-    selectedDatesss: String
+    selectedDatesss: String,
+    userId: UserSessionManager
 ) {
 
     var routine by remember { mutableStateOf(createRoutine) }
     var routineTitle by remember { mutableStateOf("") }
 
+    val usrId = userId.userId
+
     val handleSave = {
-        // Since the routine list is already updated with the latest sets,
-        // you can directly use it to create the WorkoutSession
         val workoutSession = WorkoutSession(
-            sessionId = 4, // or generate appropriately
-            userId = 4,  // Set the user ID appropriately
-            sessionDate = selectedDatesss, // Leave blank or set appropriately
+            sessionId = 4, // will be generated properly form the db
+            userId = usrId!!,
+            sessionDate = selectedDatesss,
             sessionTitle = routineTitle,
-            exercises = routine.toList() // routine already contains the latest sets
+            exercises = routine.toList()
         )
 
-        onSave(workoutSession) // Call the onSave function with the WorkoutSession object
+        onSave(workoutSession) // Call the onSave func
     }
 
 
@@ -1053,7 +1220,7 @@ fun RoutineCreationScreen(
                         exerciseId = exercise.name,
                         sets = mutableListOf()
                     ).also {
-                        routine = (routine + it).toMutableList() // Append to the routine
+                        routine = (routine + it).toMutableList()
                     }
                 }
 
@@ -1172,11 +1339,9 @@ fun SessionsScreen(userSessionManager: UserSessionManager,
     LaunchedEffect(userId) {
         isLoading = true
         try {
-            // Assuming the repository has a method to fetch sessions for a specific user
             val userSessions = repository.getAllSessionsForUser(userId!!)
             sessions = userSessions
         } catch (e: Exception) {
-            // Handle exceptions, e.g., show an error message
         } finally {
             isLoading = false
         }
@@ -1204,7 +1369,6 @@ fun SessionsScreen(userSessionManager: UserSessionManager,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(bottom = 68.dp, end = 18.dp),
-                // You might want to style the FAB to match your theme
             ) {
                 Icon(imageVector = Icons.Filled.Add, contentDescription = "Add Session")
             }
@@ -1215,6 +1379,7 @@ fun SessionsScreen(userSessionManager: UserSessionManager,
 @Composable
 fun SessionCard(session: WorkoutSession,
                 onSessionClick: (WorkoutSession) -> Unit ) {
+    //show created routines
 
     Card(
         modifier = Modifier
@@ -1249,8 +1414,8 @@ fun SessionCard(session: WorkoutSession,
 @Composable
 fun LoginScreen(
     userSessionManager: UserSessionManager,
-    onLoginSuccess: () -> Unit,
-    onNavigateToRegister: () -> Unit // Add this parameter for navigation to the registration screen
+    onNavigate: (ScreenType) -> Unit, // Callback for navigation
+    onNavigateToRegister: (ScreenType) -> Unit
 ) {
     var userId by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -1297,35 +1462,39 @@ fun LoginScreen(
 
         val dbHandler = DatabaseHandler()
         val coroutineScope = rememberCoroutineScope()
-        var loginErrorMessage by remember { mutableStateOf("") }
 
-        Button(
-            onClick = {
+        Button(onClick = {
+            if(!isValidEmail(userId)){
+                loginErrorMessage = "Please enter a valid email address."
+            }else if(password.isBlank()){
+                loginErrorMessage = "Password cannot be empty."
+            }else {
                 coroutineScope.launch {
-                    if (userId.isNotBlank()) {
-                        val isAuthenticated = Repository(dbHandler).authenticateUser(email = userId, password = password)
-                        // Assuming userId can be converted to Int
-                        userSessionManager.createSession(isAuthenticated!!)
-                        onLoginSuccess()
+                    val authResult =
+                        Repository(dbHandler).authenticateUser(email = userId, password = password)
+                    if (authResult != null) {
+                        val (authenticatedUserId, role) = authResult
+                        userSessionManager.createSession(authenticatedUserId)
+                        if (role == "admin") {
+                            onNavigate(ScreenType.AdminDashboard)
+                        } else {
+                            onNavigate(ScreenType.Dashboard)
+                        }
                     } else {
-                        loginErrorMessage = "Please enter both user ID and password"
+                        loginErrorMessage = "Authentication failed. Please check your credentials."
                     }
                 }
-            },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = userId.isNotBlank() && password.isNotBlank()
-        ) {
+            }
+        }){
             Text("Log In")
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-
-        // Add a text element for navigation to the registration screen
         Text(
             text = "Don't have an account? Register here.",
             modifier = Modifier
-                .clickable(onClick = onNavigateToRegister)
-                .padding(8.dp), // Add padding for better touch area
+                .clickable(onClick = { onNavigateToRegister(ScreenType.Registration) })
+                .padding(8.dp),
             color = MaterialTheme.colors.secondary,
             style = MaterialTheme.typography.body2
         )
@@ -1335,7 +1504,7 @@ fun LoginScreen(
 data class ExerciseProgress(val date: String, val maxWeight: Double)
 @Composable
 fun HomeScreen(userSessionManager: UserSessionManager, selectedDates: String, unitforScreen: () -> Unit) {
-    val userId = userSessionManager.userId ?: return // Safely handle null userId
+    val userId = userSessionManager.userId ?: return
     val coroutineScope = rememberCoroutineScope()
     var allExercisesProgress by remember { mutableStateOf<Map<String, List<Pair<String, Double>>>>(emptyMap()) }
     val scrollState = rememberScrollState()
@@ -1346,7 +1515,6 @@ fun HomeScreen(userSessionManager: UserSessionManager, selectedDates: String, un
     // React to changes in selectedDates
     LaunchedEffect(selectedDates) {
         if (selectedDates != oldDate) {
-            // Assume unitforScreen() updates UI or performs necessary logic for new date
             unitforScreen()
             oldDate = selectedDates
         }
@@ -1434,6 +1602,7 @@ fun QuickAdd(onCaloriesAdded: () -> Unit,
              userSessionManager: UserSessionManager) {
     var text by remember { mutableStateOf("") }
 
+    //quick add for burned calories
     var uid = userSessionManager.userId
     Card(
         modifier = Modifier
@@ -1462,11 +1631,10 @@ fun QuickAdd(onCaloriesAdded: () -> Unit,
                 onClick = {
                     if (text.isNotEmpty()) {
                         val caloriesBurned = text.toInt()
-                        val userId = uid!! // Replace with the actual user ID
+                        val userId = uid!!
                         val date = selectedDatesss
 
                         val dbHandler = DatabaseHandler()
-                        // Call insertWorkoutProgress with the necessary parameters
                         CoroutineScope(Dispatchers.Default).launch {
                             Repository(dbHandler).trackDailyCalories(userId, date, caloriesBurned)
 
@@ -1534,12 +1702,12 @@ fun AppBottomNavigation(
             selected = selectedScreen == ScreenType.WorkoutSessions,
             onClick = { onScreenSelected(ScreenType.WorkoutSessions) }
         )
-        // ... add other items as needed
     }
 }
 
 @Composable
 fun FoodsScreen(userSessionManager: UserSessionManager, onSelectAddFood: () -> Unit, selectedDatesss: String) {
+    //display info about food
     val userId = userSessionManager.userId
     var caloriesConsumed by remember { mutableStateOf(0) }
     var caloriesBurned by remember { mutableStateOf(0) }
@@ -1551,21 +1719,20 @@ fun FoodsScreen(userSessionManager: UserSessionManager, onSelectAddFood: () -> U
     val dbHandler = DatabaseHandler()
 
     if(userId != null) {
-        // Using Dispatchers.Default for background work
         CoroutineScope(Dispatchers.Default).launch {
             meals = Repository(dbHandler).fetchMealsForDay(
                 userId,
                 date = selectedDatesss
-            ) // Assuming default userId is 12
+            )
             caloriesConsumed = dbHandler.calculateDailyCaloriesConsumed(
                 userId,
                 selectedDatesss
-            ) // Replace with correct userId
+            )
             caloriesBurned = dbHandler.calculateDailyExerciseCalories(
                 userId,
                 selectedDatesss
-            ) // Replace with correct userId
-            calorieGoal = dbHandler.calculateDailyCalorieGoal(userId) // Replace with correct userId
+            )
+            calorieGoal = dbHandler.calculateDailyCalorieGoal(userId)
         }
     }
 
@@ -1573,7 +1740,6 @@ fun FoodsScreen(userSessionManager: UserSessionManager, onSelectAddFood: () -> U
 
     LazyColumn {
         item {
-            // Calories Remaining Header
             CaloriesRemainingHeader(
                 calorieGoal,
                 caloriesConsumed,
@@ -1623,6 +1789,7 @@ fun CaloriesRemainingHeader(
 }
 @Composable
 fun MealGroupSection(mealType: String, meals: List<Meal>, onAddFoodClick: () -> Unit ) {
+    //shows foods eaten so far
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         Text(mealType, style = MaterialTheme.typography.h6)
         Divider(Modifier.padding(vertical = 4.dp))
@@ -1646,11 +1813,9 @@ fun MealGroupSection(mealType: String, meals: List<Meal>, onAddFoodClick: () -> 
 }
 
 @Composable
-fun AddFoodScreen(barcodeScanner: BarcodeScanner, onSelectAddFood: (FoodItemRecord) -> Unit) {
+fun AddFoodScreen(barcodeScanner: BarcodeScanner, barcodeResult: String,onSelectAddFood: (FoodItemRecord) -> Unit) {
     val dbHandler = DatabaseHandler()
     val repository = Repository(dbHandler)
-
-    // Use rememberCoroutineScope to get the scope associated with this Composable
     val coroutineScope = rememberCoroutineScope()
 
     // Manage search results and loading state
@@ -1659,7 +1824,6 @@ fun AddFoodScreen(barcodeScanner: BarcodeScanner, onSelectAddFood: (FoodItemReco
 
     // Define the handleSearch function
     val handleSearch = { query: String ->
-        // Launch the coroutine in the Composable's scope
         coroutineScope.launch {
             isLoading = true
             searchResults = repository.searchFood(query)
@@ -1670,7 +1834,7 @@ fun AddFoodScreen(barcodeScanner: BarcodeScanner, onSelectAddFood: (FoodItemReco
 
     Column {
         TopAppBar(title = { Text("Add Food") })
-        SearchBarFood(onSearch = handleSearch, barcodeScanner = barcodeScanner)
+        SearchBarFood(onSearch = handleSearch, barcodeScanner = barcodeScanner, barcodeResult)
         // Loading indicator
         if (isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1691,6 +1855,7 @@ fun AddFoodScreen(barcodeScanner: BarcodeScanner, onSelectAddFood: (FoodItemReco
 
 @Composable
 fun FoodItemRow(foodItem: FoodItemRecord, onSelectFood: (FoodItemRecord) -> Unit) {
+    // shows food cards in the add food screen
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -1801,13 +1966,9 @@ fun AddSelectedFoodScreen(selectedFood: FoodItemRecord?,
                 fat = totalFat
             )
 
-            // ... other UI components ...
-
             // "Save" button
             Button(
                 onClick = {
-                    // Assuming you want to save the current date
-                    //val currentDate = LocalDate.now().toString()
 
                     // Create a new Meal with the collected data
                     val newMeal = Meal(
@@ -1840,8 +2001,6 @@ fun MacronutrientProgressIndicator(calories: Int, carbs: Int, protein: Int, fat:
     val percentProtein = (protein / totalMacros) * 100
     val percentFat = (fat / totalMacros) * 100
 
-    // The rest of your Canvas drawing logic goes here, using percentCarbs, percentProtein, and percentFat
-
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(16.dp)) {
             Canvas(modifier = Modifier.size(100.dp)) {
@@ -1858,7 +2017,7 @@ fun MacronutrientProgressIndicator(calories: Int, carbs: Int, protein: Int, fat:
 
                 // Draw the arc for carbs
                 drawArc(
-                    color = Color(0xFF64B5F6), // Light blue
+                    color = Color(0xFF64B5F6),
                     startAngle = startAngleCarbs,
                     sweepAngle = (percentCarbs / 100) * 360,
                     useCenter = false,
@@ -1867,7 +2026,7 @@ fun MacronutrientProgressIndicator(calories: Int, carbs: Int, protein: Int, fat:
 
                 // Draw the arc for protein
                 drawArc(
-                    color = Color(0xFF81C784), // Light green
+                    color = Color(0xFF81C784),
                     startAngle = startAngleProtein,
                     sweepAngle = (percentProtein / 100) * 360,
                     useCenter = false,
@@ -1876,7 +2035,7 @@ fun MacronutrientProgressIndicator(calories: Int, carbs: Int, protein: Int, fat:
 
                 // Draw the arc for fat
                 drawArc(
-                    color = Color(0xFFFFF176), // Light yellow
+                    color = Color(0xFFFFF176),
                     startAngle = startAngleFat,
                     sweepAngle = (percentFat / 100) * 360,
                     useCenter = false,
@@ -1945,7 +2104,7 @@ fun MacroProgressIndicator(carbs: Float, protein: Float, fat: Float) {
         Box(modifier = Modifier
             .height(20.dp)
             .fillMaxWidth()
-            .background(Color(0xFFEDE7F6)), // Light grey background
+            .background(Color(0xFFEDE7F6)),
             contentAlignment = Alignment.Center
         ) {
             Text("No macros to display", style = MaterialTheme.typography.caption)
@@ -1954,30 +2113,29 @@ fun MacroProgressIndicator(carbs: Float, protein: Float, fat: Float) {
 }
 
 @Composable
-fun SearchBarFood(onSearch: (String) -> Unit, barcodeScanner: BarcodeScanner) {
-    var searchText by remember { mutableStateOf("") }
-    // State for barcode result
-    var barcodeResult by remember { mutableStateOf("") }
+fun SearchBarFood(onSearch: (String) -> Unit, barcodeScanner: BarcodeScanner, initialBarcodeResult: String) {
+    var searchText by remember { mutableStateOf(initialBarcodeResult) } // Initialize searchText with the passed barcode result
+
+    // No need to declare another barcodeResult variable here. Use initialBarcodeResult for the initial state.
 
     // This will only be called once when the composable enters the Composition
     DisposableEffect(Unit) {
-        // Set up the listener
-        barcodeScanner.setBarcodeScannedListener { result ->
-            barcodeResult = result
-        }
+        // Assuming your BarcodeScanner has some mechanism to notify this composable when a new barcode is scanned.
+        // This setup implies the external trigger (from MainActivity) is responsible for updating the composable state.
+        // Thus, the barcodeScanner's listener inside this composable might not be necessary unless it serves another purpose.
 
-        // Clean up the listener when the composable leaves the Composition
         onDispose {
             barcodeScanner.stopCamera()
         }
     }
 
-    // Side-effect to handle barcode result updates
-    LaunchedEffect(barcodeResult) {
-        if (barcodeResult.isNotEmpty()) {
-            onSearch(barcodeResult)
-            // Optionally reset barcode result if needed
-            barcodeResult = ""
+    // If you expect the initialBarcodeResult to change during the lifetime of this composable, consider using a LaunchedEffect
+    // to react to changes. Otherwise, if initialBarcodeResult is only set once (e.g., at creation time), this might not be necessary.
+    LaunchedEffect(initialBarcodeResult) {
+        if (initialBarcodeResult.isNotEmpty()) {
+            searchText = initialBarcodeResult // Update searchText with the new barcode result
+            onSearch(initialBarcodeResult)
+            // Note: Resetting initialBarcodeResult here isn't straightforward since it's a val. Consider how you manage state outside this composable.
         }
     }
 
@@ -1991,7 +2149,11 @@ fun SearchBarFood(onSearch: (String) -> Unit, barcodeScanner: BarcodeScanner) {
         Spacer(modifier = Modifier.height(8.dp))
         Row {
             Button(
-                onClick = { barcodeScanner.startCamera() },
+                onClick = {
+                    // If barcodeScanner.startCamera() is intended to open a camera for a new scan,
+                    // ensure that the mechanism to update the composable state after scanning is handled outside (e.g., in MainActivity).
+                    barcodeScanner.startCamera()
+                },
                 modifier = Modifier.weight(1f).height(40.dp)
             ) {
                 Icon(Icons.Default.Search, contentDescription = "Scan Barcode")
@@ -1999,7 +2161,9 @@ fun SearchBarFood(onSearch: (String) -> Unit, barcodeScanner: BarcodeScanner) {
             }
             Spacer(modifier = Modifier.width(8.dp))
             Button(
-                onClick = { onSearch(searchText) },
+                onClick = {
+                    onSearch(searchText) // Uses the searchText, which is updated with the barcode result
+                },
                 modifier = Modifier.weight(1f).height(40.dp)
             ) {
                 Text("Search")
@@ -2011,7 +2175,7 @@ fun SearchBarFood(onSearch: (String) -> Unit, barcodeScanner: BarcodeScanner) {
 @Composable
 fun CalorieCard(caloriesAdded: Boolean, userSessionManager: UserSessionManager, selectedDates: String) {
 
-    val userId = userSessionManager.userId ?: return // Safely handle null userId
+    val userId = userSessionManager.userId ?: return
     val coroutineScope = rememberCoroutineScope()
     val dbHandler = DatabaseHandler()
     var caloriesConsumed by remember { mutableStateOf(0) }

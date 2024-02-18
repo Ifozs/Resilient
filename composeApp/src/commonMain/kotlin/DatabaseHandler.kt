@@ -22,6 +22,12 @@ expect class DatabaseHandler() {
     suspend fun insertUserInfo(userId: Int, weight: Float, age: Int, bodyFat: Float, height: Float, gender: String)
     suspend fun getUserSettings(userId: Int): UserSettings?
     suspend fun updateUserSettings(settings: UserSettings)
-    suspend fun authenticateUser(email: String, password: String): Int?
+    suspend fun authenticateUser(email: String, password: String): Pair<Int, String>?
     suspend fun getAllUserExerciseProgress(userId: Int): Map<String, List<Pair<String, Double>>>
+
+    //admin
+    suspend fun insertFood(barcode: String?, name: String, calories: Int, carbs: Int?, protein: Int?, fat: Int?, defaultServingSize: Float)
+    suspend fun insertExercise(exercise: String)
+    suspend fun insertMuscleGroup(muscleGroupName: String)
+    suspend fun insertExerciseMuscleGroup(exerciseName: String, muscleGroupName: String)
 }

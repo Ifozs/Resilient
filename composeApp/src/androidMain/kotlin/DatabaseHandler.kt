@@ -26,17 +26,18 @@ actual class DatabaseHandler {
     private val username = "doadmin"
     private val password = "AVNS_Y_T4UqSpppCpwsesTQZ"
 
-    // Initialize connection properties within an init block or function
+    // Initialize connection properties
     private fun initConnectionProperties(): Properties {
         val props = Properties()
         props.setProperty("user", username)
         props.setProperty("password", password)
         props.setProperty("ssl", "true")
         props.setProperty("sslmode", "require")
-        props.setProperty("sslrootcert", "/Resilient/composeApp/src/commonMain/resources/ca-certificate.crt")
+        props.setProperty("sslrootcert", "/Resilient/composeApp/src/commonMain/resources/ca-certificate.crt")// CA cert
         return props
     }
     private fun initConnection(): Connection {
+        //and now connects
         val props = initConnectionProperties()
         return DriverManager.getConnection(jdbcUrl, props)
     }
@@ -69,7 +70,7 @@ actual class DatabaseHandler {
                     val mealType = resultSet.getString("meal_type")
                     val mealDate = resultSet.getDate("date").toString()
                     val foodName = resultSet.getString("food_name")
-                    val totalCalories = resultSet.getDouble("total_calories") // Now calculated correctly
+                    val totalCalories = resultSet.getDouble("total_calories")
                     val numberOfServings = resultSet.getInt("number_of_servings")
                     val servingSizeUsed = resultSet.getDouble("serving_size_used")
 
@@ -198,6 +199,7 @@ actual class DatabaseHandler {
     }
 
     actual suspend fun insertSessionForUser(userId: Int, workoutSession: WorkoutSession) {
+        //creates the session "created" by the user
         initConnection().use { connection ->
             val sqlInsertSession = """
                 INSERT INTO workout_sessions (user_id, session_date, session_title)
@@ -258,7 +260,7 @@ actual class DatabaseHandler {
                     connection.commit()
                 }
             } catch (e: Exception) {
-                connection.rollback() // Should never fail, but if it does we are fucked
+                connection.rollback() // Should never fail, but if it does ... :(
                 throw e
             } finally {
                 connection.autoCommit = true
@@ -335,6 +337,7 @@ actual class DatabaseHandler {
     }
 
     actual suspend fun insertWorkoutProgress(userId: Int, sessionId: Int, exerciseWeightUpdates: List<ExerciseWeightUpdate>) {
+        //saves the porgress of the user
         initConnection().use { connection ->
             val sqlInsertProgressSession = """
             INSERT INTO workout_progress_sessions (session_id, user_id, session_date)
@@ -389,7 +392,7 @@ actual class DatabaseHandler {
     }
 
     actual suspend fun onFinishSession(session: WorkoutSession, updatedWeights: Map<String, Double>) {
-        // save sessions things
+        // save sessions progress
         val insertSessionSql = """
         INSERT INTO workout_progress_sessions (session_id, user_id, session_date)
         VALUES (?, ?, ?)
@@ -471,7 +474,7 @@ actual class DatabaseHandler {
     }
 
     actual suspend fun trackDailyCalories(userId: Int, date: String, caloriesBurned: Int) {
-        // QUICK ADD CALORIES NO CLUE WHY I NAMED IT TRACK DAILY CALORIES
+        // QUICK ADD CALORIES NO CLUE WHY I NAMED IT TRACK DAILY CALORIES !!!
         val insertCalorieTrackingSql = """
         INSERT INTO daily_calorie_tracking (user_id, date, calories_burned)
         VALUES (?, ?, ?);
@@ -484,7 +487,6 @@ actual class DatabaseHandler {
                     preparedStatement.setDate(2, java.sql.Date.valueOf(date))
                     preparedStatement.setInt(3, caloriesBurned)
 
-                    // Execute the update. Since we're not returning anything, we don't need to process the ResultSet.
                     val affectedRows = preparedStatement.executeUpdate()
                     if (affectedRows == 0) {
                         throw SQLException("Tracking daily calories failed, no rows affected.")
@@ -510,7 +512,6 @@ actual class DatabaseHandler {
                     preparedStatement.setInt(1, userId)
                     preparedStatement.setDate(2, java.sql.Date.valueOf(date))
 
-                    // Execute the query and process the ResultSet
                     val resultSet = preparedStatement.executeQuery()
                     if (resultSet.next()) {
                         resultSet.getInt("total_calories")
@@ -523,6 +524,7 @@ actual class DatabaseHandler {
     }
 
     actual suspend fun calculateDailyExerciseCalories(userId: Int, date: String): Int {
+        // how much they have burned
         val queryTotalExerciseCaloriesSql = """
         SELECT SUM(calories_burned) AS total_exercise_calories
         FROM daily_calorie_tracking
@@ -586,22 +588,25 @@ actual class DatabaseHandler {
 
         // Determine calorie adjustment based on the fitness goal
         val adjustment = when (fitnessGoal.lowercase()) {
-            "cut" -> 0.80 // Example: 20% calorie deficit for cutting
-            "bulk" -> 1.20 // Example: 20% calorie surplus for bulking
+            "cut" -> 0.80 // 20% calorie deficit for cutting
+            "bulk" -> 1.20 // 20% calorie surplus for bulking
             else -> 1.0 // Maintain
         }
 
-        val maintenanceCalories = bmr * 1.375 // Adjust this multiplier based on actual activity level
+        val maintenanceCalories = bmr * 1.375
         return (maintenanceCalories * adjustment).toInt()
     }
 
 
     actual suspend fun insertUserInfo(userId: Int, weight: Float, age: Int, bodyFat: Float, height: Float, gender: String) {
+        // Set fitness goal to "maintain" for all users
+        val fitnessGoal = "maintain" // Default fitness goal
+
         //after register users measurements
         val insertUserInfoSql = """
-    INSERT INTO user_info (user_id, weight, age, bodyfat, height, gender)
-    VALUES (?, ?, ?, ?, ?, ?);
-    """
+        INSERT INTO user_info (user_id, weight, age, bodyfat, height, gender, fitness_goal)
+        VALUES (?, ?, ?, ?, ?, ?, ?);
+        """
 
         withContext(Dispatchers.IO) {
             initConnection().use { connection ->
@@ -612,6 +617,7 @@ actual class DatabaseHandler {
                     preparedStatement.setFloat(4, bodyFat)
                     preparedStatement.setFloat(5, height)
                     preparedStatement.setString(6, gender)
+                    preparedStatement.setString(7, fitnessGoal) // Set the fitness goal
 
                     val affectedRows = preparedStatement.executeUpdate()
                     if (affectedRows == 0) {
@@ -622,7 +628,9 @@ actual class DatabaseHandler {
         }
     }
 
+
     actual suspend fun getUserSettings(userId: Int): UserSettings? {
+        //get the users settings
         val queryUserSettingsSql = """
         SELECT u.user_id, u.name, u.email, ui.weight, ui.age, ui.gender, ui.bodyfat, ui.height, ui.fitness_goal
         FROM users u
@@ -642,7 +650,7 @@ actual class DatabaseHandler {
                             userId = resultSet.getInt("user_id"),
                             name = resultSet.getString("name"),
                             email = resultSet.getString("email"),
-                            gender = resultSet.getString("gender"), // Retrieve gender from the result set
+                            gender = resultSet.getString("gender"),
                             weight = resultSet.getBigDecimal("weight")?.toDouble(),
                             age = resultSet.getInt("age"),
                             bodyfat = resultSet.getBigDecimal("bodyfat")?.toDouble(),
@@ -687,13 +695,13 @@ actual class DatabaseHandler {
 
                     // Update user_info table
                     connection.prepareStatement(updateUserInfoSql).use { updateUserInfoStmt ->
-                        updateUserInfoStmt.setObject(1, settings.weight, java.sql.Types.DOUBLE) // Null safe
+                        updateUserInfoStmt.setObject(1, settings.weight, java.sql.Types.DOUBLE)
                         updateUserInfoStmt.setObject(2, settings.age, java.sql.Types.INTEGER)
                         updateUserInfoStmt.setObject(3, settings.bodyfat, java.sql.Types.DOUBLE)
                         updateUserInfoStmt.setObject(4, settings.height, java.sql.Types.DOUBLE)
-                        updateUserInfoStmt.setString(5, settings.gender) // Assuming gender can be NULL
-                        updateUserInfoStmt.setString(6, settings.fitnessGoal) // Set the fitness goal
-                        updateUserInfoStmt.setInt(7, settings.userId) // Adjusted to be the seventh parameter
+                        updateUserInfoStmt.setString(5, settings.gender)
+                        updateUserInfoStmt.setString(6, settings.fitnessGoal)
+                        updateUserInfoStmt.setInt(7, settings.userId)
                         updateUserInfoStmt.executeUpdate()
                     }
 
@@ -702,7 +710,7 @@ actual class DatabaseHandler {
                 } catch (e: Exception) {
                     // If there is an exception, roll back the transaction
                     connection.rollback()
-                    throw e // Re-throw the exception to be handled elsewhere
+                    throw e
                 } finally {
                     // Reset auto-commit to its default state
                     connection.autoCommit = true
@@ -711,9 +719,10 @@ actual class DatabaseHandler {
         }
     }
 
-    actual suspend fun authenticateUser(email: String, password: String): Int? {
+    actual suspend fun authenticateUser(email: String, password: String): Pair<Int, String>? {
+        // Updated to select the role of the user as well
         val queryUserSql = """
-        SELECT user_id, password_hash FROM users WHERE email = ?;
+    SELECT user_id, password_hash, role FROM users WHERE email = ?;
     """
 
         return withContext(Dispatchers.IO) {
@@ -725,7 +734,10 @@ actual class DatabaseHandler {
                     if (resultSet.next()) {
                         val storedPasswordHash = resultSet.getString("password_hash")
                         if (BCrypt.checkpw(password, storedPasswordHash)) {
-                            resultSet.getInt("user_id")
+                            val userId = resultSet.getInt("user_id")
+                            val role = resultSet.getString("role")
+                            // Return both user ID and role as a Pair
+                            Pair(userId, role)
                         } else {
                             null // Password does not match
                         }
@@ -737,7 +749,9 @@ actual class DatabaseHandler {
         }
     }
 
+
     actual suspend fun getAllUserExerciseProgress(userId: Int): Map<String, List<Pair<String, Double>>> {
+        // show the users progress
         val queryAllExerciseProgressSql = """
             SELECT e.exercise, wps.session_date, ewp.max_weight
             FROM workout_progress_sessions wps
@@ -754,13 +768,104 @@ actual class DatabaseHandler {
                     val resultSet = preparedStatement.executeQuery()
                     val results = mutableMapOf<String, MutableList<Pair<String, Double>>>()
                     while (resultSet.next()) {
-                        // Corrected to use "exercise" as per the SELECT statement in the SQL query
                         val exerciseName = resultSet.getString("exercise")
                         val sessionDate = resultSet.getDate("session_date").toString()
                         val maxWeight = resultSet.getDouble("max_weight")
                         results.getOrPut(exerciseName) { mutableListOf() }.add(sessionDate to maxWeight)
                     }
                     results
+                }
+            }
+        }
+    }
+
+    //admin
+    actual suspend fun insertFood(barcode: String?, name: String, calories: Int, carbs: Int?, protein: Int?, fat: Int?, defaultServingSize: Float) {
+        val insertFoodSql = """
+    INSERT INTO food (barcode, name, calories, carbs, protein, fat, default_serving_size)
+    VALUES (?, ?, ?, ?, ?, ?, ?);
+    """
+
+        withContext(Dispatchers.IO) {
+            initConnection().use { connection ->
+                connection.prepareStatement(insertFoodSql).use { preparedStatement ->
+                    preparedStatement.setString(1, barcode)
+                    preparedStatement.setString(2, name)
+                    preparedStatement.setInt(3, calories)
+                    preparedStatement.setObject(4, carbs, java.sql.Types.INTEGER)
+                    preparedStatement.setObject(5, protein, java.sql.Types.INTEGER)
+                    preparedStatement.setObject(6, fat, java.sql.Types.INTEGER)
+                    preparedStatement.setFloat(7, defaultServingSize)
+
+                    preparedStatement.executeUpdate().let { affectedRows ->
+                        if (affectedRows == 0) {
+                            throw SQLException("Inserting food failed, no rows affected.")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    actual suspend fun insertExercise(exercise: String) {
+        val insertExerciseSql = """
+    INSERT INTO exercises (exercise)
+    VALUES (?);
+    """
+
+        withContext(Dispatchers.IO) {
+            initConnection().use { connection ->
+                connection.prepareStatement(insertExerciseSql).use { preparedStatement ->
+                    preparedStatement.setString(1, exercise)
+
+                    preparedStatement.executeUpdate().let { affectedRows ->
+                        if (affectedRows == 0) {
+                            throw SQLException("Inserting exercise failed, no rows affected.")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    actual suspend fun insertMuscleGroup(muscleGroupName: String) {
+        val insertMuscleGroupSql = """
+    INSERT INTO muscle_groups (muscle_group_name)
+    VALUES (?);
+    """
+
+        withContext(Dispatchers.IO) {
+            initConnection().use { connection ->
+                connection.prepareStatement(insertMuscleGroupSql).use { preparedStatement ->
+                    preparedStatement.setString(1, muscleGroupName)
+
+                    preparedStatement.executeUpdate().let { affectedRows ->
+                        if (affectedRows == 0) {
+                            throw SQLException("Inserting muscle group failed, no rows affected.")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    actual suspend fun insertExerciseMuscleGroup(exerciseName: String, muscleGroupName: String) {
+        val insertExerciseMuscleGroupSql = """
+    INSERT INTO exercise_muscle_groups (exercise_name, muscle_group_name)
+    VALUES (?, ?);
+    """
+
+        withContext(Dispatchers.IO) {
+            initConnection().use { connection ->
+                connection.prepareStatement(insertExerciseMuscleGroupSql).use { preparedStatement ->
+                    preparedStatement.setString(1, exerciseName)
+                    preparedStatement.setString(2, muscleGroupName)
+
+                    preparedStatement.executeUpdate().let { affectedRows ->
+                        if (affectedRows == 0) {
+                            throw SQLException("Associating exercise with muscle group failed, no rows affected.")
+                        }
+                    }
                 }
             }
         }

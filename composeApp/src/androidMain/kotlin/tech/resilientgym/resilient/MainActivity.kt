@@ -7,15 +7,26 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.google.zxing.integration.android.IntentIntegrator
 
 class MainActivity : ComponentActivity() {
     private lateinit var userSessionManager: UserSessionManager
     private lateinit var barcodeScanner: BarcodeScanner
+    private var barcodeResult by mutableStateOf("")
     private val scanLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val data: Intent? = result.data
             val scanResult = IntentIntegrator.parseActivityResult(result.resultCode, data)
+
+            if (scanResult != null) {
+                if (scanResult.contents != null) {
+                    barcodeResult = scanResult.contents
+                }
+            }
+
             if (scanResult != null) {
                 if (scanResult.contents == null) {
                     Toast.makeText(this, "Cancelled", Toast.LENGTH_LONG).show()
@@ -27,6 +38,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -34,7 +47,7 @@ class MainActivity : ComponentActivity() {
         userSessionManager = UserSessionManager(context = this)
         barcodeScanner = BarcodeScanner(this, scanLauncher)
         setContent {
-            App(userSessionManager = userSessionManager, barcodeScanner)
+            App(userSessionManager = userSessionManager, barcodeScanner, barcodeResult)
         }
     }
 
